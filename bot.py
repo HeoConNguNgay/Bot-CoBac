@@ -72,8 +72,9 @@ async def main():
     TOKEN = os.getenv("TOKEN")
 
     if not TOKEN:
-        print("❌ Không tìm thấy token trong .env.bot2")
+        print("❌ Không tìm thấy biến môi trường TOKEN")
         return
+
 
     try:
         await bot.start(TOKEN)
