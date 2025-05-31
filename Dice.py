@@ -39,43 +39,46 @@ class Dice(commands.Cog):
         else:
             return 1 / 10
 
-    # === Slash Command: /dc đoán số và cược ===
-    @app_commands.command(name="dc", description="Chọn số từ 1-6 để đổ xúc xắc và cược")
-    @app_commands.describe(
-        guess="Số bạn đoán (1 đến 6)",
-        bet="Số tiền muốn cược"
-    )
-    @app_commands.rename(guess="sodoan", bet="cuoc")
-    async def roll_dice(self, interaction: discord.Interaction, guess: int, bet: int):
-        user_id = str(interaction.user.id)
+    async def _respond(self, ctx_or_interaction, message, ephemeral=False, is_prefix=False):
+        if is_prefix:
+            await ctx_or_interaction.send(message)
+        else:
+            await ctx_or_interaction.response.send_message(message, ephemeral=ephemeral)
 
-        # Kiểm tra giới hạn đầu vào thủ công
+    async def run_dice(self, ctx_or_interaction, user, guess, bet, is_prefix=False):
+        user_id = str(user.id)
+
         if not (1 <= guess <= 6):
-            return await interaction.response.send_message("❗ Số đoán phải từ 1 đến 6.", ephemeral=True)
+            return await self._respond(ctx_or_interaction, "❗ Số đoán phải từ 1 đến 6.", ephemeral=True, is_prefix=is_prefix)
         if bet <= 0 or bet > MAX_BET:
-            return await interaction.response.send_message(f"❗ Cược phải từ 1 đến {MAX_BET:,}.", ephemeral=True)
+            return await self._respond(ctx_or_interaction, f"❗ Cược phải từ 1 đến {MAX_BET:,}.", ephemeral=True, is_prefix=is_prefix)
 
         wait_time = check_cooldown(user_id)
         if wait_time:
-            return await interaction.response.send_message(
-                f"⏳ Vui lòng chờ {wait_time:.1f} giây trước khi chơi tiếp.", ephemeral=True)
-        if is_banned(user_id):
-            return await interaction.response.send_message("🚫 Tài khoản bị cấm sử dụng bot.", ephemeral=True)
-        if is_locked(user_id):
-            return await interaction.response.send_message("🔒 Tài khoản bị khoá chức năng chơi game.", ephemeral=True)
+            seconds = int(wait_time) + 1
+            message = f"❗ Slow down! Bạn còn phải chờ **{seconds} giây** trước khi dùng lại."
+            return await self._respond(ctx_or_interaction, message, ephemeral=True, is_prefix=is_prefix)
 
-        balance = get_balance(interaction.user.id)
+        if is_banned(user_id):
+            return await self._respond(ctx_or_interaction, "🚫 Tài khoản bị cấm sử dụng bot.", ephemeral=True, is_prefix=is_prefix)
+        if is_locked(user_id):
+            return await self._respond(ctx_or_interaction, "🔒 Tài khoản bị khoá chức năng chơi game.", ephemeral=True, is_prefix=is_prefix)
+
+        balance = get_balance(user.id)
         if bet > balance:
-            return await interaction.response.send_message(
-                f"❗ Không đủ tiền. Hiện có {balance:,} {CURRENCY_NAME}.", ephemeral=True)
+            return await self._respond(ctx_or_interaction, f"❗ Không đủ tiền. Hiện có {balance:,} {CURRENCY_NAME}.", ephemeral=True, is_prefix=is_prefix)
 
         win_chance = self.get_win_chance(bet)
-        await interaction.response.send_message(
-            f"🎲 {interaction.user.display_name} cược 🧨 {bet:,} và đoán số {guess}\n🎲 Tung xúc xắc...", wait=True)
-        message = await interaction.original_response()
+        announce = f"🎲 {user.display_name} cược 🧨 {bet:,} và đoán số {guess}\n🎲 Tung xúc xắc..."
+
+        if is_prefix:
+            msg = await ctx_or_interaction.send(announce)
+        else:
+            await ctx_or_interaction.response.send_message(announce, wait=True)
+            msg = await ctx_or_interaction.original_response()
 
         for count in [3, 2, 1]:
-            await message.edit(content=f"🎲 {interaction.user.display_name} cược 🧨 {bet:,} và đoán số {guess}\n🎲 Tung xúc xắc...\n⏳ {count}...")
+            await msg.edit(content=announce + f"\n⏳ {count}...")
             await asyncio.sleep(1)
 
         result = random.randint(1, 6)
@@ -85,17 +88,33 @@ class Dice(commands.Cog):
 
         if guess == result and random.random() < win_chance:
             reward = bet * 2
-            update_balance(interaction.user.id, reward)
+            update_balance(user.id, reward)
             stats[user_id]["win"] += 1
             add_win(user_id)
             outcome = f"🎯 Kết quả: {result} — 🎉 Thắng! Nhận {reward:,} {CURRENCY_NAME}!"
         else:
-            update_balance(interaction.user.id, -bet)
+            update_balance(user.id, -bet)
             stats[user_id]["loss"] += 1
             outcome = f"🎯 Kết quả: {result} — 💥 Thua. Mất {bet:,} {CURRENCY_NAME}."
 
         save_json(DICE_STATS_FILE, stats)
-        await message.edit(content=f"🎲 {interaction.user.display_name} cược 🧨 {bet:,} và đoán số {guess}\n🎲 Tung xúc xắc...\n{outcome}")
+        await msg.edit(content=announce + f"\n{outcome}")
+
+    # === Slash Command: /dc đoán số và cược ===
+    @app_commands.command(name="dc", description="Chọn số từ 1-6 để đổ xúc xắc và cược")
+    @app_commands.describe(guess="Số bạn đoán (1 đến 6)", bet="Số tiền muốn cược")
+    @app_commands.rename(guess="sodoan", bet="cuoc")
+    async def roll_dice(self, interaction: discord.Interaction, guess: int, bet: int):
+        await self.run_dice(interaction, interaction.user, guess, bet)
+
+    # === Cược toàn bộ số dư ===
+    @app_commands.command(name="dcall", description="All-in xúc xắc với 1 số")
+    @app_commands.describe(guess="Số bạn đoán (1 đến 6)")
+    async def dice_all(self, interaction: discord.Interaction, guess: int):
+        balance = get_balance(interaction.user.id)
+        if balance <= 0:
+            return await interaction.response.send_message(f"❗ Bạn không có {CURRENCY_NAME} để cược.", ephemeral=True)
+        await self.run_dice(interaction, interaction.user, guess, balance)
 
     # === Xem thống kê cá nhân ===
     @app_commands.command(name="dcstats", description="Xem thống kê xúc xắc của bạn")
@@ -133,47 +152,6 @@ class Dice(commands.Cog):
             )
         await interaction.response.send_message(embed=embed)
 
-    # === Cược toàn bộ số dư ===
-    @app_commands.command(name="dcall", description="All-in xúc xắc với 1 số")
-    @app_commands.describe(guess="Số bạn đoán (1 đến 6)")
-    async def dice_all(self, interaction: discord.Interaction, guess: int):
-        user_id = str(interaction.user.id)
-        bet = get_balance(interaction.user.id)
-
-        if bet <= 0:
-            return await interaction.response.send_message(f"❗ Bạn không có {CURRENCY_NAME} để cược.", ephemeral=True)
-        if not (1 <= guess <= 6):
-            return await interaction.response.send_message("❗ Số đoán phải từ 1 đến 6.", ephemeral=True)
-
-        wait_time = check_cooldown(user_id)
-        if wait_time:
-            return await interaction.response.send_message(
-                f"⏳ Chờ {wait_time:.1f} giây nữa để chơi tiếp.", ephemeral=True)
-        if is_banned(user_id):
-            return await interaction.response.send_message("🚫 Tài khoản bị cấm.", ephemeral=True)
-        if is_locked(user_id):
-            return await interaction.response.send_message("🔒 Tài khoản bị khoá chơi game.", ephemeral=True)
-
-        win_chance = self.get_win_chance(bet)
-        result = random.randint(1, 6)
-        stats = load_json(DICE_STATS_FILE)
-        if user_id not in stats:
-            stats[user_id] = {"win": 0, "loss": 0}
-
-        if guess == result and random.random() < win_chance:
-            reward = bet * 2
-            update_balance(interaction.user.id, reward)
-            stats[user_id]["win"] += 1
-            add_win(user_id)
-            message = f"🎲 Đổ ra **{result}**! THẮNG {reward:,} {CURRENCY_NAME}!"
-        else:
-            update_balance(interaction.user.id, -bet)
-            stats[user_id]["loss"] += 1
-            message = f"🎲 Đổ ra **{result}**! Thua. Mất {bet:,} {CURRENCY_NAME}."
-
-        save_json(DICE_STATS_FILE, stats)
-        await interaction.response.send_message(message)
-
     # === Reset thống kê cho người chơi (admin) ===
     @app_commands.command(name="dcreset", description="Reset thống kê Dice của người chơi")
     @app_commands.describe(user="Người cần reset")
@@ -191,13 +169,14 @@ class Dice(commands.Cog):
     # === Các lệnh dạng prefix (dành cho !dc, !dcstats, ...) ===
     @commands.command(name="dc")
     async def dc_prefix(self, ctx: commands.Context, guess: int, bet: int):
-        interaction = await self.bot.get_application_context(ctx.message)
-        await self.roll_dice(interaction, guess, bet)
+        await self.run_dice(ctx, ctx.author, guess, bet, is_prefix=True)
 
     @commands.command(name="dcall")
     async def dcall_prefix(self, ctx: commands.Context, guess: int):
-        interaction = await self.bot.get_application_context(ctx.message)
-        await self.dice_all(interaction, guess)
+        balance = get_balance(ctx.author.id)
+        if balance <= 0:
+            return await ctx.send("❗ Bạn không có tiền để cược.")
+        await self.run_dice(ctx, ctx.author, guess, balance, is_prefix=True)
 
     @commands.command(name="dcstats")
     async def dcstats_prefix(self, ctx: commands.Context):

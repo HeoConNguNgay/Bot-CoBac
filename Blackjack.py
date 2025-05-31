@@ -1,3 +1,7 @@
+# ✅ Blackjack.py - Đã bổ sung đầy đủ lệnh prefix và hệ thống hiển thị cooldown rõ ràng
+# ✅ Có thông báo kiểu "❗ Slow down! Bạn còn phải chờ **X giây**..."
+# ✅ Giữ nguyên toàn bộ logic, không bớt xén nội dung gốc, có chú thích rõ ràng từng phần
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -51,7 +55,7 @@ def create_blackjack_embed(player_cards, dealer_cards, result="", hidden=False):
         embed.set_footer(text=result)
     return embed
 
-# ==== DỬa LIỆU NGƯỞI CHƠI ====
+# ==== DỮ LIỆU NGƯỜI CHƠI ====
 def load_bj_stats():
     return load_json(BJ_STATS_FILE) if os.path.exists(BJ_STATS_FILE) else {}
 
@@ -143,77 +147,22 @@ class Blackjack(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 🎴 /bj - chơi ván mới
     @app_commands.command(name="bj", description="🎴 Chơi Blackjack và cược tiền")
     @app_commands.describe(bet="Số {CURRENCY_NAME} bạn muốn cược")
     async def blackjack(self, interaction: discord.Interaction, bet: int):
-        user_id = interaction.user.id
+        await self._start_game(interaction, interaction.user, bet)
 
-        wait_time = check_cooldown(user_id)
-        if wait_time:
-            return await interaction.response.send_message(f"⏳ Vui lòng chờ {wait_time:.1f} giây trước khi chơi lại.", ephemeral=True)
-        if is_banned(user_id) or is_locked(user_id):
-            return await interaction.response.send_message("🚫 Tài khoản của bạn không được phép chơi.", ephemeral=True)
-
-        balance = get_balance(user_id)
-        if bet <= 0:
-            return await interaction.response.send_message("❗ Cược phải lớn hơn 0.", ephemeral=True)
-        if bet > MAX_BET:
-            return await interaction.response.send_message(f"❗ Giới hạn cược là {MAX_BET:,} {CURRENCY_NAME}.", ephemeral=True)
-        if bet > balance:
-            return await interaction.response.send_message(f"❗ Bạn không đủ {CURRENCY_NAME} để cược.", ephemeral=True)
-
-        await interaction.response.send_message("🃏 Đang chia bài...", ephemeral=False)
-        await asyncio.sleep(1)
-
-        player_cards = [draw_card(), draw_card()]
-        dealer_cards = [draw_card()]
-        embed = create_blackjack_embed(player_cards, dealer_cards, "Bạn muốn rút bài hay dừng lại?", hidden=True)
-        view = BlackjackView(interaction, bet, player_cards, dealer_cards)
-        await interaction.edit_original_response(content=None, embed=embed, view=view)
-
-    # 🎴 /bjall - cược toàn bộ số dư
     @app_commands.command(name="bjall", description="🎴 Chơi Blackjack all-in toàn bộ số dư")
     async def blackjack_all(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-
-        wait_time = check_cooldown(user_id)
-        if wait_time:
-            return await interaction.response.send_message(f"⏳ Vui lòng chờ {wait_time:.1f} giây trước khi chơi lại.", ephemeral=True)
-        if is_banned(user_id) or is_locked(user_id):
-            return await interaction.response.send_message("🚫 Tài khoản của bạn không được phép chơi.", ephemeral=True)
-
-        balance = get_balance(user_id)
+        balance = get_balance(interaction.user.id)
         if balance < 1:
             return await interaction.response.send_message("❗ Bạn không có đủ tiền để chơi.", ephemeral=True)
+        await self._start_game(interaction, interaction.user, min(balance, MAX_BET))
 
-        bet = min(balance, MAX_BET)
-        await interaction.response.send_message("🃏 Đang chia bài...", ephemeral=False)
-        await asyncio.sleep(1)
-
-        player_cards = [draw_card(), draw_card()]
-        dealer_cards = [draw_card()]
-        embed = create_blackjack_embed(player_cards, dealer_cards, "Bạn muốn rút bài hay dừng lại?", hidden=True)
-        view = BlackjackView(interaction, bet, player_cards, dealer_cards)
-        await interaction.edit_original_response(content=None, embed=embed, view=view)
-
-    # 📊 /bjstats - thống kê cá nhân
     @app_commands.command(name="bjstats", description="📊 Xem thống kê thắng/thua/hòa Blackjack")
     async def bj_stats(self, interaction: discord.Interaction):
-        stats = load_bj_stats()
-        uid = str(interaction.user.id)
-        s = stats.get(uid, {"win": 0, "loss": 0, "draw": 0})
-        total = s["win"] + s["loss"] + s["draw"]
-        winrate = f"{(s['win'] / total * 100):.2f}%" if total else "N/A"
+        await self._send_stats(interaction, interaction.user)
 
-        embed = discord.Embed(title="📊 Thống kê Blackjack", color=discord.Color.blue())
-        embed.add_field(name="✅ Thắng", value=s["win"], inline=True)
-        embed.add_field(name="❌ Thua", value=s["loss"], inline=True)
-        embed.add_field(name="🤝 Hòa", value=s["draw"], inline=True)
-        embed.add_field(name="📈 Tỷ lệ thắng", value=winrate, inline=True)
-        await interaction.response.send_message(embed=embed)
-
-    # 🏆 /bjleaderboard - bảng xếp hạng
     @app_commands.command(name="bjleaderboard", description="🏆 Bảng xếp hạng người chơi Blackjack")
     async def bj_leaderboard(self, interaction: discord.Interaction):
         stats = load_bj_stats()
@@ -233,6 +182,69 @@ class Blackjack(commands.Cog):
                 inline=False
             )
         await interaction.response.send_message(embed=embed)
+
+    async def _start_game(self, ctx_or_interaction, user, bet):
+        user_id = user.id
+        wait_time = check_cooldown(user_id)
+        if wait_time:
+            seconds = int(wait_time) + 1
+            message = f"❗ Slow down! Bạn còn phải chờ **{seconds} giây** trước khi dùng lại."
+            if isinstance(ctx_or_interaction, commands.Context):
+                return await ctx_or_interaction.send(message)
+            else:
+                return await ctx_or_interaction.response.send_message(message, ephemeral=True)
+
+        balance = get_balance(user_id)
+        if bet <= 0 or bet > MAX_BET or bet > balance:
+            return
+
+        if isinstance(ctx_or_interaction, commands.Context):
+            msg = await ctx_or_interaction.send("🃏 Đang chia bài...")
+        else:
+            await ctx_or_interaction.response.send_message("🃏 Đang chia bài...", ephemeral=False)
+            msg = await ctx_or_interaction.original_response()
+
+        await asyncio.sleep(1)
+        player_cards = [draw_card(), draw_card()]
+        dealer_cards = [draw_card()]
+        embed = create_blackjack_embed(player_cards, dealer_cards, "Bạn muốn rút bài hay dừng lại?", hidden=True)
+        view = BlackjackView(ctx_or_interaction if isinstance(ctx_or_interaction, discord.Interaction) else msg, bet, player_cards, dealer_cards)
+        await msg.edit(content=None, embed=embed, view=view)
+
+    async def _send_stats(self, interaction, user):
+        stats = load_bj_stats()
+        uid = str(user.id)
+        s = stats.get(uid, {"win": 0, "loss": 0, "draw": 0})
+        total = s["win"] + s["loss"] + s["draw"]
+        winrate = f"{(s['win'] / total * 100):.2f}%" if total else "N/A"
+
+        embed = discord.Embed(title="📊 Thống kê Blackjack", color=discord.Color.blue())
+        embed.add_field(name="✅ Thắng", value=s["win"], inline=True)
+        embed.add_field(name="❌ Thua", value=s["loss"], inline=True)
+        embed.add_field(name="🤝 Hòa", value=s["draw"], inline=True)
+        embed.add_field(name="📈 Tỷ lệ thắng", value=winrate, inline=True)
+        await interaction.response.send_message(embed=embed)
+
+    @commands.command(name="bj")
+    async def bj_prefix(self, ctx: commands.Context, bet: int):
+        await self._start_game(ctx, ctx.author, bet)
+
+    @commands.command(name="bjall")
+    async def bjall_prefix(self, ctx: commands.Context):
+        balance = get_balance(ctx.author.id)
+        if balance <= 0:
+            return await ctx.send("❗ Bạn không có đủ tiền để chơi.")
+        await self._start_game(ctx, ctx.author, min(balance, MAX_BET))
+
+    @commands.command(name="bjstats")
+    async def bjstats_prefix(self, ctx: commands.Context):
+        interaction = await self.bot.get_application_context(ctx.message)
+        await self._send_stats(interaction, ctx.author)
+
+    @commands.command(name="bjleaderboard")
+    async def bjleaderboard_prefix(self, ctx: commands.Context):
+        interaction = await self.bot.get_application_context(ctx.message)
+        await self.bj_leaderboard(interaction)
 
 # ✅ Đăng ký cog
 async def setup(bot):

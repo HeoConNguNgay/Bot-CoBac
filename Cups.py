@@ -1,6 +1,5 @@
 # ✅ Đã giữ nguyên toàn bộ cấu trúc và logic gốc của bạn
-# ✅ Chỉ tích hợp kiểm tra quyền user.id == MY_USER_ID cho lệnh /cupsreset và !cupsreset
-# ✅ Không rút gọn, xoá hay thay đổi bất kỳ chi tiết nào
+# ✅ Chỉ tích hợp thêm cooldown hiển thị kiểu "❗ Slow down! Bạn còn phải chờ X giây..."
 
 import discord
 from discord.ext import commands
@@ -48,7 +47,7 @@ class Cups(commands.Cog):
 
         wait_time = check_cooldown(user_id)
         if wait_time:
-            return await interaction.response.send_message(f"⏳ Vui lòng chờ {wait_time:.1f} giây...", ephemeral=True)
+            return await interaction.response.send_message(f"❗ Slow down! Bạn còn phải chờ **{int(wait_time)+1} giây**...", ephemeral=True)
 
         if is_banned(user_id):
             return await interaction.response.send_message("🚫 Bạn đã bị cấm sử dụng bot.", ephemeral=True)
@@ -94,7 +93,7 @@ class Cups(commands.Cog):
         user_id = str(interaction.user.id)
         wait_time = check_cooldown(user_id)
         if wait_time:
-            return await interaction.response.send_message(f"⏳ Vui lòng chờ {wait_time:.1f} giây...", ephemeral=True)
+            return await interaction.response.send_message(f"❗ Slow down! Bạn còn phải chờ **{int(wait_time)+1} giây**...", ephemeral=True)
 
         if is_banned(user_id):
             return await interaction.response.send_message("🚫 Bị cấm chơi.", ephemeral=True)
