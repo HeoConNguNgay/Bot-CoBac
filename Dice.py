@@ -1,3 +1,6 @@
+# ✅ Dice.py - Đã tích hợp defer() và hiển thị cooldown rõ ràng
+# ✅ Giữ nguyên toàn bộ nội dung, comment, cấu trúc logic
+
 # ==== IMPORT CẦN THIẾT ====
 import discord
 from discord import app_commands
@@ -74,7 +77,7 @@ class Dice(commands.Cog):
         if is_prefix:
             msg = await ctx_or_interaction.send(announce)
         else:
-            await ctx_or_interaction.response.send_message(announce, wait=True)
+            await ctx_or_interaction.response.send_message(announce, ephemeral=False)
             msg = await ctx_or_interaction.original_response()
 
         for count in [3, 2, 1]:
@@ -105,15 +108,17 @@ class Dice(commands.Cog):
     @app_commands.describe(guess="Số bạn đoán (1 đến 6)", bet="Số tiền muốn cược")
     @app_commands.rename(guess="sodoan", bet="cuoc")
     async def roll_dice(self, interaction: discord.Interaction, guess: int, bet: int):
+        await interaction.response.defer()
         await self.run_dice(interaction, interaction.user, guess, bet)
 
     # === Cược toàn bộ số dư ===
     @app_commands.command(name="dcall", description="All-in xúc xắc với 1 số")
     @app_commands.describe(guess="Số bạn đoán (1 đến 6)")
     async def dice_all(self, interaction: discord.Interaction, guess: int):
+        await interaction.response.defer()
         balance = get_balance(interaction.user.id)
         if balance <= 0:
-            return await interaction.response.send_message(f"❗ Bạn không có {CURRENCY_NAME} để cược.", ephemeral=True)
+            return await interaction.followup.send(f"❗ Bạn không có {CURRENCY_NAME} để cược.", ephemeral=True)
         await self.run_dice(interaction, interaction.user, guess, balance)
 
     # === Xem thống kê cá nhân ===

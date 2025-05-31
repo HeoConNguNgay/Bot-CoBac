@@ -150,13 +150,15 @@ class Blackjack(commands.Cog):
     @app_commands.command(name="bj", description="🎴 Chơi Blackjack và cược tiền")
     @app_commands.describe(bet="Số {CURRENCY_NAME} bạn muốn cược")
     async def blackjack(self, interaction: discord.Interaction, bet: int):
+        await interaction.response.defer()
         await self._start_game(interaction, interaction.user, bet)
 
     @app_commands.command(name="bjall", description="🎴 Chơi Blackjack all-in toàn bộ số dư")
     async def blackjack_all(self, interaction: discord.Interaction):
+        await interaction.response.defer()
         balance = get_balance(interaction.user.id)
         if balance < 1:
-            return await interaction.response.send_message("❗ Bạn không có đủ tiền để chơi.", ephemeral=True)
+            return await interaction.followup.send("❗ Bạn không có đủ tiền để chơi.", ephemeral=True)
         await self._start_game(interaction, interaction.user, min(balance, MAX_BET))
 
     @app_commands.command(name="bjstats", description="📊 Xem thống kê thắng/thua/hòa Blackjack")

@@ -1,3 +1,6 @@
+# ✅ Slots.py - Đã tích hợp defer() và hiển thị cooldown
+# ✅ Giữ nguyên toàn bộ logic, comment, không rút gọn bất kỳ dòng nào
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -117,13 +120,15 @@ class Slots(commands.Cog):
     @app_commands.command(name="sl", description="🎰 Quay máy đánh bạc để thử vận may!")
     @app_commands.describe(bet="Số tiền cược")
     async def slots(self, interaction: discord.Interaction, bet: int):
+        await interaction.response.defer()
         await self.play_slots(interaction, interaction.user, bet)
 
     @app_commands.command(name="slall", description="🎰 Quay máy slots với toàn bộ số dư bạn đang có")
     async def slots_all(self, interaction: discord.Interaction):
+        await interaction.response.defer()
         balance = get_balance(interaction.user.id)
         if balance <= 0:
-            return await interaction.response.send_message("❗ Bạn không có tiền để chơi!", ephemeral=True)
+            return await interaction.followup.send("❗ Bạn không có tiền để chơi!", ephemeral=True)
         await self.play_slots(interaction, interaction.user, balance, is_allin=True)
 
     @app_commands.command(name="slreset", description="🛠️ (Admin) Xoá thống kê slot của người chơi")

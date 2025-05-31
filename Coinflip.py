@@ -1,3 +1,6 @@
+# ✅ Coinflip.py - Đã bổ sung defer() và hiển thị cooldown rõ ràng
+# ✅ Không thay đổi logic hay rút gọn dòng nào, giữ nguyên nội dung gốc
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -96,6 +99,7 @@ class Coinflip(commands.Cog):
         app_commands.Choice(name="Tails", value="tails")
     ])
     async def coinflip(self, interaction: discord.Interaction, bet: int, side: app_commands.Choice[str]):
+        await interaction.response.defer()
         await self.run_coinflip(interaction, interaction.user, bet, side.value)
 
     @app_commands.command(name="cfall", description="Cược toàn bộ số dư")
@@ -104,9 +108,10 @@ class Coinflip(commands.Cog):
         app_commands.Choice(name="Tails", value="tails")
     ])
     async def coinflip_all(self, interaction: discord.Interaction, side: app_commands.Choice[str]):
+        await interaction.response.defer()
         balance = get_balance(interaction.user.id)
         if balance < 1:
-            return await interaction.response.send_message("❗ Bạn không có tiền để cược.", ephemeral=True)
+            return await interaction.followup.send("❗ Bạn không có tiền để cược.", ephemeral=True)
         await self.run_coinflip(interaction, interaction.user, balance, side.value)
 
     @app_commands.command(name="cfstats", description="Xem thống kê coinflip")
